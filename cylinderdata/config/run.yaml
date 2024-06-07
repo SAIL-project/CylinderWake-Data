@@ -1,0 +1,11 @@
+defaults:
+  - _self_
+  - sim: default
+
+interval: 10
+
+hydra:
+  job:
+    chdir: true
+  run:
+    dir: ./logs/run/${now:%m-%d-%H-%M-%S}/

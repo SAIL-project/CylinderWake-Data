@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cylinderdata"
+version = "0.0.1"
+authors = [{ name = "Thorben Markmann", email = "dev@thorbenmarkmann.com" }]
+description = "Tools for managing Cylinder Wake data."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = ["numpy", "h5py", "hydra-core", "gymnasium", "tqdm"]
+
+
+[project.urls]
+Homepage = "https://github.com/SAIL-project/CylinderWake-Dataset"
+Issues = "https://github.com/SAIL-project/CylinderWake-Dataset/issues"
+
+[tool.black]
+line-length = 99
+
+[tool.isort]
+profile = "black"
+filter_files = true
