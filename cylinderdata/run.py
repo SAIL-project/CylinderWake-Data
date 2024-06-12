@@ -3,6 +3,7 @@ import rootutils
 from omegaconf import DictConfig
 import hydrogym.firedrake as hgym
 from hydrogym.firedrake.utils.io import LogCallback
+import matplotlib.pyplot as plt
 
 rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
 from cylinderdata.utils.callbacks import CylinderVisCallback
@@ -13,7 +14,7 @@ def log(flow: hgym.RotaryCylinder):
     return CL, CD
 
 
-def run_cylinder(sim: DictConfig, interval: int):
+def run_cylinder(sim: DictConfig, control: DictConfig, interval: int):
     # Define system
     flow = hgym.RotaryCylinder(
         Re=sim.re,
@@ -28,19 +29,32 @@ def run_cylinder(sim: DictConfig, interval: int):
         CylinderVisCallback(interval=interval),
     ]
 
+    # Controller
+    controller = hydra.utils.instantiate(control)
+
     # Run simulation
+    print("Running simulation..")
     hgym.integrate(
         flow,
         t_span=(0, sim.episode_length),
         dt=sim.dt,
         callbacks=callbacks,
         stabilization=sim.stabilization,
+        controller=controller.control,
     )
+
+    # Plot
+    print("Plotting..")
+    fig, ax = plt.subplots()
+    ax.plot(controller.time, controller.omega)
+    ax.set(xlabel='time', ylabel='omega')
+    ax.grid()
+    fig.savefig("test.png")
 
 
 @hydra.main(version_base=None, config_path="config", config_name="run")
 def main(cfg: DictConfig) -> None:
-    run_cylinder(cfg.sim, cfg.interval)
+    run_cylinder(cfg.sim, cfg.controller, cfg.interval)
 
 
 if __name__ == "__main__":
