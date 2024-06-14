@@ -1,0 +1,5 @@
+_target_: cylinderdata.control.PDController
+k: 2.0
+theta: 4.0
+dt: ${sim.dt}
+tf: ${sim.episode_length}

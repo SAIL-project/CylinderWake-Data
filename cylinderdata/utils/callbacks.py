@@ -1,7 +1,7 @@
 import os
 from typing import Callable, Optional, Tuple
-
 import h5py
+from tqdm import tqdm
 import matplotlib
 import numpy as np
 import seaborn as sns
@@ -10,6 +10,70 @@ from matplotlib import pyplot as plt
 from firedrake import FunctionSpace, VertexOnlyMesh, assemble
 from firedrake.__future__ import interpolate
 from hydrogym.core import CallbackBase, PDEBase
+
+
+class LogObservationCallback(CallbackBase):
+    def __init__(
+        self,
+        tf: float,
+        interval: Optional[int] = 1,
+    ):
+        super().__init__(interval=interval)
+        self.pbar = tqdm(total=tf, desc="Cylinder Simulation")
+        self.observations = []
+        self.time = []
+
+    def __call__(self, iter: int, t: float, flow: PDEBase):
+        if super().__call__(iter, t, flow):
+            CL, CD = flow.get_observations()
+            # Save
+            self.observations.append((CL, CD))
+            self.time.append(t)
+            # Update progress bar
+            self.pbar.update(t - self.pbar.n)
+            self.pbar.set_postfix({"CL": CL, "CD": CD})
+
+    def close(self):
+        fig, ax = plt.subplots()
+
+        # Plot lift
+        ax.set_xlabel("time")
+        ax.set_ylabel("lift")
+        ax.plot(self.time, [obs[0] for obs in self.observations])
+        ax.tick_params(axis="y")
+
+        # Plot drag
+        ax2 = ax.twinx()
+        ax2.set_ylabel("drag")
+        ax2.plot(self.time, [obs[1] for obs in self.observations])
+        ax2.tick_params(axis="y")
+
+        fig.tight_layout()
+        ax.grid()
+        fig.savefig("observation.png")
+
+
+class LogControlCallback(CallbackBase):
+    def __init__(
+        self,
+        interval: Optional[int] = 1,
+    ):
+        super().__init__(interval=interval)
+
+        self.control = []
+        self.time = []
+
+    def __call__(self, iter: int, t: float, flow: PDEBase):
+        if super().__call__(iter, t, flow):
+            self.control.append(flow.control_state)
+            self.time.append(t)
+
+    def close(self):
+        fig, ax = plt.subplots()
+        ax.plot(self.time, self.control)
+        ax.set(xlabel="time", ylabel="control")
+        ax.grid()
+        fig.savefig("control.png")
 
 
 class CylinderVisCallback(CallbackBase):
@@ -79,7 +143,15 @@ class H5DatasetCallback(CallbackBase):
             compression="gzip",
             dtype=np.float32,
         )
-        # TODO control dataset
+
+        control_len = len(flow.control_state)
+        self.dataset_control = self.file.create_dataset(
+            "control",
+            (steps, control_len),
+            chunks=(steps, control_len),
+            compression="gzip",
+            dtype=np.float32,
+        )
 
         # Save simulation parameters
         self.t_start = t_start
@@ -113,8 +185,11 @@ class H5DatasetCallback(CallbackBase):
                 j = self.domain2index(x, self.domain[1], self.N[1])
                 for c, f in enumerate(functions):
                     state[c, i, j] = f[idx]
+            # Get control
+            control = np.array(flow.control_state)
             # save to datset
             self.dataset_state[self.state_idx] = state
+            self.dataset_control[self.state_idx] = control
             self.state_idx += 1
 
     def domain2index(self, value: float, domain: Tuple[float, float], N) -> int:

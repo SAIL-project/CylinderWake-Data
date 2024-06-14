@@ -1,25 +1,27 @@
+from typing import Any
 import numpy as np
 from .controller import Controller
 
 
 class BaselineController(Controller):
-    def __init__(self, max_control=0.5):
-        print("Baseline Controller initialized")
-        self.max_control = max_control
+    def __init__(
+        self,
+        max_control: float,
+        start_time: float,
+        freq_coeff: float,
+        control_duration: float,
+    ) -> None:
+        super().__init__(max_control, start_time, control_duration)
+        self.freq_coeff = freq_coeff
 
-        self.omega = []
-        self.time = []
+    def __call__(self, t: float, obs: Any) -> float:
+        if super().__call__(t, obs):
+            # no control period
+            if t % 10 > 8:
+                self.control = 0.0
+            # sinusoidal control
+            else:
+                freq = 2 * np.pi * (t - self.start_time) / self.freq_coeff
+                self.control = self.max_control * np.sin(freq * t)
 
-    def control(self, t, obs):
-        # Have no inputs for periods, otherwise sinusoidal
-        if t % 10 > 9:
-            omega = 0.0
-        else:
-            freq = 2 * np.pi * (t / 10) / 5.0
-            omega = self.max_control * np.sin(freq * t)
-
-        # TODO remove
-        self.omega.append(omega)
-        self.time.append(t)
-
-        return omega
+        return self.control

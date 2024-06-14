@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Run",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/cylinderdata/run.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": ["sim.episode_length=5", "controller=baseline"]
+        },
+    ]
+}

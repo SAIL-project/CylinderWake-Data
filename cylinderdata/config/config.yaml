@@ -1,9 +1,12 @@
 defaults:
   - _self_
   - sim: default
-  - controller: uncontrolled 
+  - controller: zero 
 
 interval: 10
+show: true
+control_duration: 1
+control_start: 0
 
 hydra:
   job:

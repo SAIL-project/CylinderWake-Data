@@ -1,15 +1,11 @@
-import psutil
 import rootutils
-import time
-from tqdm import tqdm
 import hydra
-from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig
 import hydrogym.firedrake as hgym
 from firedrake import Interpolate, assemble, inner, sqrt
 
 rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
-from cylinderdata.utils import H5DatasetCallback
+from cylinderdata.utils import H5DatasetCallback, LogControlCallback, LogObservationCallback
 
 
 def compute_fields(flow: hgym.RotaryCylinder):
@@ -22,34 +18,34 @@ def compute_fields(flow: hgym.RotaryCylinder):
     return [velocity_x, velocity_y, pressure, vorticity, magnitude]
 
 
-def log(flow: hgym.RotaryCylinder):
-    mem_usage = psutil.virtual_memory().percent
-    CL, CD = flow.get_observations()
-    return CL, CD, mem_usage
-
-
-def generate_cylinder(sim: DictConfig, interval: int, seed: int, num: int = 0):
+def generate_cylinder(cfg: DictConfig):
     # Define system
+    sim = cfg.sim
     flow = hgym.RotaryCylinder(
         Re=sim.re,
         mesh=sim.mesh,
         velocity_order=sim.velocity_order,
     )
 
+    # Controller
+    controller = hydra.utils.instantiate(
+        cfg.control, max_control=flow.MAX_CONTROL, control_duration=cfg.control_duration
+    )
+
     # Callbacks
-    print_fmt = "t: {0:0.2f},\t\t CL: {1:0.3f},\t\t CD: {2:0.03f}\t\t Mem: {3:0.1f}"
-    steps = round(sim.episode_length / (interval * sim.dt))
+    steps = round(sim.episode_length / (cfg.interval * sim.dt))
     callbacks = [
-        hgym.utils.io.LogCallback(postprocess=log, nvals=3, print_fmt=print_fmt, interval=20),
+        LogObservationCallback(interval=cfg.interval, tf=sim.episode_length),
+        LogControlCallback(interval=cfg.interval),
         H5DatasetCallback(
-            filename=f"../Cylinder-Dataset/cylinder{seed}.h5",
+            filename="../Cylinder-Dataset/cylinder.h5",
             t_start=sim.cook_length,
             flow=flow,
             fields=compute_fields,
             steps=steps,
             grid_N=(128, 512),
             grid_domain=((-2, 2), (-2, 14)),
-            interval=interval,
+            interval=cfg.interval,
         ),
     ]
 
@@ -59,18 +55,14 @@ def generate_cylinder(sim: DictConfig, interval: int, seed: int, num: int = 0):
         t_span=(0, sim.episode_length + sim.cook_length),
         dt=sim.dt,
         callbacks=callbacks,
+        controller=controller,
         stabilization=sim.stabilization,
     )
 
 
-@hydra.main(version_base=None, config_path="config", config_name="generate")
+@hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: DictConfig) -> None:
-    num = HydraConfig.get().job.num
-    time.sleep(num / 10)
-    pbar = tqdm(total=cfg.count, desc=f"Generating Dataset {num}", position=2 * num, leave=False)
-    for i in range(cfg.count):
-        generate_cylinder(cfg.sim, cfg.interval, cfg.base_seed + i, num=num)
-        pbar.update(1)
+    generate_cylinder(cfg.sim)
 
 
 if __name__ == "__main__":

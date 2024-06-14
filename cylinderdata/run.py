@@ -2,59 +2,65 @@ import hydra
 import rootutils
 from omegaconf import DictConfig
 import hydrogym.firedrake as hgym
-from hydrogym.firedrake.utils.io import LogCallback
-import matplotlib.pyplot as plt
+from hydrogym.firedrake.utils.io import CheckpointCallback
 
 rootutils.setup_root(__file__, indicator="pyproject.toml", pythonpath=True)
-from cylinderdata.utils.callbacks import CylinderVisCallback
+from cylinderdata.utils.callbacks import (
+    CylinderVisCallback,
+    LogControlCallback,
+    LogObservationCallback,
+)
 
 
-def log(flow: hgym.RotaryCylinder):
-    CL, CD = flow.get_observations()
-    return CL, CD
+def run_cylinder(cfg: DictConfig):
 
-
-def run_cylinder(sim: DictConfig, control: DictConfig, interval: int):
     # Define system
-    flow = hgym.RotaryCylinder(
-        Re=sim.re,
-        mesh=sim.mesh,
-        velocity_order=sim.velocity_order,
-    )
+    sim = cfg.sim
+    if sim.checkpoint != "":
+        flow = hgym.RotaryCylinder(
+            Re=sim.re,
+            mesh=sim.mesh,
+            velocity_order=sim.velocity_order,
+            restart=sim.checkpoint,
+        )
+    else:
+        flow = hgym.RotaryCylinder(
+            Re=sim.re,
+            mesh=sim.mesh,
+            velocity_order=sim.velocity_order,
+        )
 
     # Callbacks
-    print_fmt = "t: {0:0.2f},\t\t CL: {1:0.3f},\t\t CD: {2:0.03f}"
     callbacks = [
-        LogCallback(postprocess=log, nvals=2, print_fmt=print_fmt, interval=interval),
-        CylinderVisCallback(interval=interval),
+        LogObservationCallback(interval=cfg.interval, tf=sim.episode_length),
+        LogControlCallback(interval=1),
+        CheckpointCallback(interval=100, filename="checkpoint.h5"),
     ]
+    if cfg.show:
+        callbacks.append(CylinderVisCallback(interval=cfg.interval))
 
     # Controller
-    controller = hydra.utils.instantiate(control)
+    controller = hydra.utils.instantiate(
+        cfg.controller,
+        max_control=flow.MAX_CONTROL,
+        control_duration=cfg.control_duration,
+        start_time=cfg.control_start,
+    )
 
     # Run simulation
-    print("Running simulation..")
     hgym.integrate(
         flow,
         t_span=(0, sim.episode_length),
         dt=sim.dt,
         callbacks=callbacks,
         stabilization=sim.stabilization,
-        controller=controller.control,
+        controller=controller,
     )
 
-    # Plot
-    print("Plotting..")
-    fig, ax = plt.subplots()
-    ax.plot(controller.time, controller.omega)
-    ax.set(xlabel='time', ylabel='omega')
-    ax.grid()
-    fig.savefig("test.png")
 
-
-@hydra.main(version_base=None, config_path="config", config_name="run")
+@hydra.main(version_base=None, config_path="config", config_name="config")
 def main(cfg: DictConfig) -> None:
-    run_cylinder(cfg.sim, cfg.controller, cfg.interval)
+    run_cylinder(cfg)
 
 
 if __name__ == "__main__":
